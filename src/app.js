@@ -17,11 +17,7 @@ const{checkOverload} = require('./helpers/check.connect')
 checkOverload()
 
 // init routes
-app.get("/", (req, res, next)=>{
-    return res.status(200).json({
-        message: 'YoLo'
-    })
-})
+app.use('/', require('./routes'))
 
 
 // handling error

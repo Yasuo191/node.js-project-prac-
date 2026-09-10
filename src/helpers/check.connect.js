@@ -1,6 +1,6 @@
 'use strict'
 
-const _SECOND = 20000
+const _SECOND = 200000000
 const os = require('os')
 const process = require('process')
 const mongoose = require('mongoose')
