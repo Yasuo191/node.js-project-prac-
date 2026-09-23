@@ -18,7 +18,15 @@ const keyTokenSchema = new Schema({
         required: true
     },
 
+    // the currently-valid refresh token for this shop
     refreshToken: {
+        type: String,
+        default: ''
+    },
+
+    // refresh tokens that have already been rotated out - kept around so that if one of them
+    // is ever presented again we know the token has been stolen/replayed and can react
+    refreshTokensUsed: {
         type: Array,
         default: []
     }

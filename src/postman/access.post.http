@@ -1,11 +1,40 @@
 @url_dev=http://localhost:3055/v1/api
+@api_key=REPLACE_WITH_A_KEY_FROM_scripts_seed-apikey
+@client_id=REPLACE_WITH_SHOP_ID_FROM_SIGNUP_RESPONSE
+@access_token=REPLACE_WITH_ACCESSTOKEN_FROM_SIGNUP_OR_LOGIN
+@refresh_token=REPLACE_WITH_REFRESHTOKEN_FROM_SIGNUP_OR_LOGIN
 
 ### signup
 POST {{url_dev}}/shop/signup
 Content-Type: application/json
+x-api-key: {{api_key}}
 
 {
     "name": "Hieu",
     "email": "hieu@gmail.com",
     "password": "123456"
 }
+
+### login
+POST {{url_dev}}/shop/login
+Content-Type: application/json
+x-api-key: {{api_key}}
+
+{
+    "email": "hieu@gmail.com",
+    "password": "123456"
+}
+
+### logout (needs the access token + client id from signup/login)
+POST {{url_dev}}/shop/logout
+Content-Type: application/json
+x-api-key: {{api_key}}
+x-client-id: {{client_id}}
+authorization: {{access_token}}
+
+### refresh token (needs the refresh token + client id from signup/login)
+POST {{url_dev}}/shop/handle-refresh-token
+Content-Type: application/json
+x-api-key: {{api_key}}
+x-client-id: {{client_id}}
+x-rtoken-id: {{refresh_token}}

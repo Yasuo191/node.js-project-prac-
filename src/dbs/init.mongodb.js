@@ -12,7 +12,9 @@ class Database {
 
     // connect
     connect(type = 'mongodb') {
-        if (1 === 1) {
+        if (process.env.NODE_ENV === 'dev') {
+            // was previously `if (1 === 1)` - a leftover stub that always turned on verbose
+            // query logging, including in production
             mongoose.set('debug', true)
             mongoose.set('debug', { color: true })
         }

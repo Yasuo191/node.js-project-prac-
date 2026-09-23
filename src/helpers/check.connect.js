@@ -1,6 +1,6 @@
 'use strict'
 
-const _SECOND = 200000000
+const _SECOND = 5000 // 5 seconds - was previously 200,000,000ms (~55 hours), so it never actually monitored anything
 const os = require('os')
 const process = require('process')
 const mongoose = require('mongoose')

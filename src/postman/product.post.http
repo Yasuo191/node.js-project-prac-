@@ -1,0 +1,66 @@
+@url_dev=http://localhost:3055/v1/api
+@api_key=REPLACE_WITH_A_KEY_FROM_scripts_seed-apikey
+@client_id=REPLACE_WITH_SHOP_ID_FROM_SIGNUP_RESPONSE
+@access_token=REPLACE_WITH_ACCESSTOKEN_FROM_SIGNUP_OR_LOGIN
+
+### create product (protected)
+POST {{url_dev}}/product
+Content-Type: application/json
+x-api-key: {{api_key}}
+x-client-id: {{client_id}}
+authorization: {{access_token}}
+
+{
+    "product_name": "Ao So Mi Nam",
+    "product_thumb": "thumb.jpg",
+    "product_description": "Ao so mi cotton",
+    "product_price": 250000,
+    "product_quantity": 100,
+    "product_type": "Clothing",
+    "product_attributes": {
+        "brand": "Local Brand",
+        "size": "L",
+        "material": "Cotton"
+    }
+}
+
+### get all published products (public)
+GET {{url_dev}}/product
+x-api-key: {{api_key}}
+
+### get product detail (public)
+GET {{url_dev}}/product/REPLACE_WITH_PRODUCT_ID
+x-api-key: {{api_key}}
+
+### search products (public)
+GET {{url_dev}}/product/search/ao%20so%20mi
+x-api-key: {{api_key}}
+
+### get my drafts (protected)
+GET {{url_dev}}/product/drafts/all
+x-api-key: {{api_key}}
+x-client-id: {{client_id}}
+authorization: {{access_token}}
+
+### publish a product (protected)
+POST {{url_dev}}/product/publish/REPLACE_WITH_PRODUCT_ID
+x-api-key: {{api_key}}
+x-client-id: {{client_id}}
+authorization: {{access_token}}
+
+### update a product (protected)
+PATCH {{url_dev}}/product/REPLACE_WITH_PRODUCT_ID
+Content-Type: application/json
+x-api-key: {{api_key}}
+x-client-id: {{client_id}}
+authorization: {{access_token}}
+
+{
+    "product_price": 230000
+}
+
+### delete a product (protected)
+DELETE {{url_dev}}/product/REPLACE_WITH_PRODUCT_ID
+x-api-key: {{api_key}}
+x-client-id: {{client_id}}
+authorization: {{access_token}}

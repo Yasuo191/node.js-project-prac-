@@ -6,6 +6,8 @@ const crypto = require('crypto')
 
 const KeyTokenService = require('./keyToken.service')
 const { createTokenPair } = require('../auth/authUtils')
+const { getInfoData } = require('../utils')
+const { BadRequestError, ConflictRequestError, AuthFailureError, ForbiddenError } = require('../core/error.response')
 
 const RoleShop = {
     SHOP: 'SHOP',
@@ -14,89 +16,134 @@ const RoleShop = {
     ADMIN: 'ADMIN'
 }
 
+// Generates a fresh RSA key pair as PEM strings.
+// NOTE: encoding must be specified, otherwise generateKeyPairSync returns KeyObject
+// instances whose .toString() is "[object KeyObject]" (not the PEM string) - a real bug
+// this codebase used to have.
+function generateRsaKeyPair() {
+    return crypto.generateKeyPairSync('rsa', {
+        modulusLength: 4096,
+        publicKeyEncoding: { type: 'pkcs1', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs1', format: 'pem' }
+    })
+}
+
+const shopPublicFields = ['_id', 'name', 'email']
+
 class AccessService {
 
     static signUp = async ({ name, email, password }) => {
-        try {
+        // check email exists
+        const holderShop = await shopModel.findOne({ email }).lean()
 
-            // check email exists
-            const holderShop = await shopModel.findOne({ email }).lean()
+        if (holderShop) {
+            throw new ConflictRequestError('Shop already registered')
+        }
 
-            if (holderShop) {
-                return {
-                    code: 'xxxx',
-                    message: 'shop already registered'
-                }
-            }
+        // hash password
+        const passwordHash = await bcrypt.hash(password, 10)
 
-            // hash password
-            const passwordHash = await bcrypt.hash(password, 10)
+        // create shop
+        const newShop = await shopModel.create({
+            name,
+            email,
+            password: passwordHash,
+            roles: [RoleShop.SHOP]
+        })
 
-            // create shop
-            const newShop = await shopModel.create({
-                name,
-                email,
-                password: passwordHash,
-                roles: [RoleShop.SHOP]
-            })
+        if (!newShop) {
+            throw new BadRequestError('Failed to create shop')
+        }
 
-            if (newShop) {
+        // Generate a key pair, sign the token pair with it, then persist only the public
+        // key + refreshToken (the private key is never stored - see the note on login()).
+        const { privateKey, publicKey } = generateRsaKeyPair()
+        const tokens = await createTokenPair({ userId: newShop._id, email }, publicKey, privateKey)
 
-                // create privateKey and publicKey
-                const { privateKey, publicKey } =
-                    crypto.generateKeyPairSync('rsa', {
-                        modulusLength: 4096
-                    })
+        const keyStore = await KeyTokenService.createKeyToken({
+            userId: newShop._id,
+            publicKey,
+            refreshToken: tokens.refreshToken
+        })
 
-                console.log({ privateKey, publicKey })
+        if (!keyStore) {
+            throw new BadRequestError('publicKeyString error')
+        }
 
-                // save publicKey
-                const publicKeyString =
-                    await KeyTokenService.createKeyToken({
-                        userId: newShop._id,
-                        publicKey
-                    })
+        return {
+            shop: getInfoData({ fields: shopPublicFields, object: newShop }),
+            tokens
+        }
+    }
 
-                if (!publicKeyString) {
-                    return {
-                        code: 'xxxx',
-                        message: 'publicKeyString error'
-                    }
-                }
+    static login = async ({ email, password }) => {
+        const foundShop = await shopModel.findOne({ email }).lean()
+        if (!foundShop) {
+            throw new BadRequestError('Shop not registered')
+        }
 
-                // create token pair
-                const tokens = await createTokenPair(
-                    {
-                        userId: newShop._id,
-                        email
-                    },
-                    publicKey,
-                    privateKey
-                )
+        const isMatch = await bcrypt.compare(password, foundShop.password)
+        if (!isMatch) {
+            throw new AuthFailureError('Authentication error')
+        }
 
-                console.log(`create Token success::`, tokens)
+        // NOTE: this codebase never persists the RSA private key - a fresh key pair is
+        // (re)generated on every signup/login/refresh, the new tokens are signed with it
+        // immediately, and only the public key + latest refreshToken are stored for later
+        // verification. createKeyToken() upserts so this works whether or not the shop
+        // already had a key document (e.g. logging back in after a logout).
+        const { privateKey, publicKey } = generateRsaKeyPair()
+        const tokens = await createTokenPair({ userId: foundShop._id, email }, publicKey, privateKey)
 
-                return {
-                    code: 201,
-                    metadata: {
-                        shop: newShop,
-                        tokens
-                    }
-                }
-            }
+        await KeyTokenService.createKeyToken({
+            userId: foundShop._id,
+            publicKey,
+            refreshToken: tokens.refreshToken
+        })
 
-            return {
-                code: 200,
-                metadata: null
-            }
+        return {
+            shop: getInfoData({ fields: shopPublicFields, object: foundShop }),
+            tokens
+        }
+    }
 
-        } catch (error) {
+    static logout = async (keyStore) => {
+        return await KeyTokenService.removeKeyById(keyStore._id)
+    }
 
-            return {
-                code: 'xxx',
-                message: error.message,
-                status: 'error'
-            }
+    // Rotates the refresh token. If a refreshToken that was already rotated out is presented
+    // again, that's a strong signal of token theft/replay - every session for that shop is
+    // revoked and the caller must log in again.
+    static handleRefreshToken = async ({ keyStore, user, refreshToken }) => {
+        const { userId, email } = user
+
+        if (keyStore.refreshTokensUsed.includes(refreshToken)) {
+            await KeyTokenService.deleteKeyByUserId(userId)
+            throw new ForbiddenError('Something went wrong, please login again')
+        }
+
+        if (keyStore.refreshToken !== refreshToken) {
+            throw new AuthFailureError('Shop not registered')
+        }
+
+        const foundShop = await shopModel.findOne({ _id: userId }).lean()
+        if (!foundShop) {
+            throw new AuthFailureError('Shop not registered')
+        }
+
+        const { privateKey, publicKey } = generateRsaKeyPair()
+        const tokens = await createTokenPair({ userId, email }, publicKey, privateKey)
+
+        await KeyTokenService.updateRefreshTokenUsed({
+            id: keyStore._id,
+            newRefreshToken: tokens.refreshToken,
+            oldRefreshToken: refreshToken,
+            publicKey
+        })
+
+        return {
+            shop: getInfoData({ fields: shopPublicFields, object: foundShop }),
+            tokens
         }
     }
 }
